@@ -1,160 +1,74 @@
 import { mat4 } from 'gl-matrix';
-import { Shaders } from './engine/shaders'
-import { vsSource, fsSource } from './shaders/shaders'
+import { cbve } from './cbve';
+import { Cube } from './models/models';
+// Assuming your shaders are exported as strings from this file
+import { vsSource, fsSource } from './shaders/shaders';
 
+// Setup Canvas and WebGL Context
 const canvas = document.querySelector('#glCanvas') as HTMLCanvasElement;
 const gl = canvas.getContext('webgl');
-if (gl === null) {
-    console.error("Unable to initialize WebGL. Your browser or machine may not support it.");
-}
-
-// Set canvas size to fill the window
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
-gl!.viewport(0, 0, canvas.width, canvas.height);
-
-function resizeCanvasToDisplaySize(canvas: HTMLCanvasElement, gl: WebGLRenderingContext) {
-    // Get the size the browser is displaying the canvas in CSS pixels
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-
-    // Check if the canvas is not the same size.
-    if (canvas.width !== width || canvas.height !== height) {
-        // Make the canvas the same size
-        canvas.width = width;
-        canvas.height = height;
-
-        // Update the WebGL viewport
-        gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
-        return true;
-    }
-    return false;
-}
 
 if (!gl) {
-    throw new Error("WebGL not supported");
+    alert('Unable to initialize WebGL. Your browser or machine may not support it.');
+    throw new Error('WebGL not supported');
 }
 
-const shaderProgram = Shaders.InitShader(gl, vsSource, fsSource);
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    gl!.viewport(0, 0, canvas.width, canvas.height);
+}
+window.addEventListener('resize', resize);
+resize();
 
-// Interface for Program Info context
-interface ProgramInfo {
-    program: WebGLProgram | null;
-    attribLocations: {
-        vertexPosition: number;
-    };
-    uniformLocations: {
-        projectionMatrix: WebGLUniformLocation | null;
-        modelViewMatrix: WebGLUniformLocation | null;
-    }
+// Initialize Engine Components (Shaders, Renderer, Mesh)
+// We compile shaders once at the start
+const programInfo = cbve.Shaders.createProgram(gl, vsSource, fsSource);
+if (!programInfo) {
+    throw new Error('Failed to initialize shader program');
+}
+const renderer = new cbve.Renderer(gl, programInfo);
+const cube: Cube = new Cube();
+const cubeMesh = new cbve.Mesh(gl, cube);
+
+//  Global Cube State
+let cubeRotation = 0.0;
+let lastTime = 0;
+
+// Render Loop
+function render(now: number) {
+    // Calculate deltaTime so rotation speed is consistent regardless of FPS
+    const deltaTime = (now - lastTime) * 0.001;
+    lastTime = now;
+
+    cubeRotation += deltaTime;
+
+    // WebGL Configuration per frame
+    gl!.clearColor(0.1, 0.1, 0.1, 1.0);
+    gl!.clearDepth(1.0);
+    gl!.enable(gl!.DEPTH_TEST);
+    gl!.depthFunc(gl!.LEQUAL);
+    gl!.clear(gl!.COLOR_BUFFER_BIT | gl!.DEPTH_BUFFER_BIT);
+
+    // Camera Setup
+    const aspect: number = canvas.width / canvas.height;
+    const fov: number = 45 * Math.PI / 180; // in radians
+    const z_near: number = 0.1;
+    const z_far: number = 100.0;
+    const cameraPosition = [0, 0, -12];
+
+    // Setup Matrices
+    const projectionMatrix: mat4 = mat4.create();
+    mat4.perspective(projectionMatrix, fov, aspect, z_near, z_far);
+
+    const modelViewMatrix = mat4.create();
+    mat4.translate(modelViewMatrix, modelViewMatrix, cameraPosition); // Move back
+    mat4.rotate(modelViewMatrix, modelViewMatrix, cubeRotation, [0, 1, 0]);   // Rotate Y
+
+    // Draw 
+    renderer.draw(cubeMesh, projectionMatrix, modelViewMatrix);
+    requestAnimationFrame(render);
 }
 
-const programInfo: ProgramInfo = {
-    program: shaderProgram,
-    attribLocations: {
-        vertexPosition: gl.getAttribLocation(shaderProgram!, 'aVertexPosition'),
-    },
-    uniformLocations: {
-        projectionMatrix: gl.getUniformLocation(shaderProgram!, 'uProjectionMatrix'),
-        modelViewMatrix: gl.getUniformLocation(shaderProgram!, 'uModelViewMatrix'),
-    },
-};
-
-// Draw Scene
-// Set clear color to a dark "map" aesthetic
-gl.clearColor(0.1, 0.1, 0.1, 1.0);
-gl.clearDepth(1.0);
-gl.enable(gl.DEPTH_TEST);
-gl.depthFunc(gl.LEQUAL);
-
-gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-
-// Field of View in Radians
-const fov: number = (45 * Math.PI) / 180;
-// Aspect Ratio is important for precise prespective
-const aspect: number = gl.canvas.width / gl.canvas.height;
-//  Z near and far clipping planes
-const zNear: number = 0.1;
-// Z far clipping plane
-const zFar: number = 100.0;
-
-
-// Setup perspective matrix
-const projectionMatrix: mat4 = mat4.create();
-mat4.perspective(projectionMatrix, fov, aspect, zNear, zFar);
-
-// Model View Matrix shifted back 6 units
-const modelViewMatrix: mat4 = mat4.create();
-mat4.translate(modelViewMatrix, modelViewMatrix, [-0.0, 0.0, -6.0]);
-
-setPositionAttribute(gl, programInfo, modelViewMatrix, projectionMatrix);
-gl.useProgram(programInfo.program);
-gl.uniformMatrix4fv(
-    programInfo.uniformLocations.projectionMatrix,
-    false,
-    projectionMatrix);
-gl.uniformMatrix4fv(
-    programInfo.uniformLocations.modelViewMatrix,
-    false,
-    modelViewMatrix);
-
-const offset = 0;
-const vertexCount = 4;
-gl.drawArrays(gl.TRIANGLE_STRIP, offset, vertexCount);
-
-
-
-interface Buffers {
-    position: WebGLBuffer | null;
-}
-
-function initBuffers(gl: WebGLRenderingContext): Buffers {
-    const positionBuffer = gl.createBuffer();
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-    // Square vertex positions
-    const positions = new Float32Array([
-        1.0, 1.0,  // Top Right
-        -1.0, 1.0,  // Top Left
-        1.0, -1.0,  // Bottom Right
-        -1.0, -1.0   // Bottom Left
-    ]);
-    gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
-
-    let buffers: Buffers = {
-        position: positionBuffer,
-    }
-
-    return buffers;
-}
-
-// Tells WebGL how to pull out the positions from the position buffer into the vertexPosition attribute
-//
-// @param gl - WebGLRenderingContext - WebGL rendering context
-// @param programInfo - ProgramInfo - Program information
-// @param modelViewMatrix - mat4 - Model view matrix
-// @param projectionMatrix - mat4 - Projection matrix
-function setPositionAttribute(gl: WebGLRenderingContext, programInfo: ProgramInfo, modelViewMatrix: mat4, projectionMatrix: mat4) {
-    const numComponents = 2;  // pull out 2 values per iteration
-    const type = gl.FLOAT;    // the data in the buffer is 32bit floats
-    const normalize = false;  // don't normalize
-    const stride = 0;
-
-    const offset = 0;
-    gl.bindBuffer(gl.ARRAY_BUFFER, initBuffers(gl).position);
-    gl.vertexAttribPointer(
-        programInfo.attribLocations.vertexPosition,
-        numComponents,
-        type,
-        normalize,
-        stride,
-        offset);
-
-    gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition);
-}
-
-
-
-
-
+// Start the engine
+requestAnimationFrame(render);
