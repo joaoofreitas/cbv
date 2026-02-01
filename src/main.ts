@@ -33,8 +33,14 @@ if (!programInfo) {
 }
 const renderer = new cbve.Renderer(gl, programInfo);
 const feature = data.features[1];
-const building = cbve.BuildingFactory.createMesh(feature);
-const buildingMesh = new cbve.Mesh(gl, building);
+const building = new cbve.Building(feature);
+const buildingMesh = new cbve.Mesh(gl, building.geometry);
+
+// Set the building data to the UI
+document.getElementById('building-name')!.textContent = building.name
+document.getElementById('building-type')!.textContent = building.type
+document.getElementById('building-levels')!.textContent = building.levels
+document.getElementById('building-street')!.textContent = building.street
 
 
 //  Global Cube State

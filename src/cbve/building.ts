@@ -1,13 +1,34 @@
 import earcut from 'earcut';
 import { type Geometry } from "../cbve/types";
 
-export class BuildingFactory {
+export class Building {
     private static METERS_PER_LEVEL = 3.5;
 
-    static createMesh(feature: any): Geometry {
+    public name: string = "Unnamed Building";
+    public type: string = "Building";
+    public levels: number = 1;
+    public street: string = "";
+    public geometry: Geometry;
+
+
+    constructor(feature: any) {
+        this.parseMetadata(feature);
+        this.geometry = this.createMesh(feature);
+    }
+
+    // Parse GeoJSON feature to create building mesh form OSM Data
+    private parseMetadata(feature: any): void {
+        this.name = feature.properties["name"] || "Unnamed Building";
+        this.type = feature.properties["building"] || "Building";
+        this.levels = parseInt(feature.properties["building:levels"]) || 1;
+        this.street = feature.properties["addr:street"] || "";
+    }
+
+    private createMesh(feature: any): Geometry {
         const allRings = feature.geometry.coordinates;
         const levels = parseInt(feature.properties["building:levels"]) || 1;
-        const height = levels * this.METERS_PER_LEVEL;
+        console.log(`Creating building with ${levels} levels`);
+        const height = levels * Building.METERS_PER_LEVEL;
 
         // Calculating the center of the building for positioning
         let minX = Infinity, maxX = -Infinity;
@@ -83,7 +104,7 @@ export class BuildingFactory {
         };
     }
 
-    private static latLonToMeters(lat: number, lon: number, anchorLat: number, anchorLon: number) {
+    private latLonToMeters(lat: number, lon: number, anchorLat: number, anchorLon: number) {
         const R = 6378137;
         const x = (lon - anchorLon) * (Math.PI / 180) * R * Math.cos(anchorLat * Math.PI / 180);
         const y = (lat - anchorLat) * (Math.PI / 180) * R;
