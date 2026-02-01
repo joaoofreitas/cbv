@@ -20,8 +20,53 @@
             height: 100vh;
         }
     </style>
+
+    <style>
+        #ui-container {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            pointer-events: none; /* Allows mouse clicks to pass through to the 3D canvas */
+        }
+        
+        .glass-panel {
+            pointer-events: auto; /* Re-enable clicks for the card itself */
+            background: rgba(20, 20, 20, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            font-family: 'Inter', sans-serif;
+            width: 300px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+        }
+        
+        #building-name { margin: 0 0 10px 0; color: #e1e1e1; font-size: 1.4rem; }
+        .data-row { display: flex; justify-content: space-between; margin-bottom: 5px; }
+        .label { opacity: 0.6; font-size: 0.9rem; }
+        .value { font-weight: bold; color: #eee; }
+    </style>
 </head>
 <body>
+<div id="ui-container">
+    <div id="building-info" class="glass-panel">
+        <h2 id="building-name">Building Name</h2>
+        <div class="data-row">
+            <span class="label">Type:</span>
+            <span id="building-type" class="value">-</span>
+        </div>
+        <div class="data-row">
+            <span class="label">Levels:</span>
+            <span id="building-levels" class="value">-</span>
+        </div>
+        <div class="data-row">
+            <span class="label">Street:</span>
+            <span id="building-street" class="value">-</span>
+        </div>
+        <hr />
+    </div>
+</div>
     <canvas id="glCanvas"></canvas>
     <script type="module" src="/src/main.ts"></script>
 </body>

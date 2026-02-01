@@ -31,17 +31,42 @@ const programInfo = cbve.Shaders.createProgram(gl, vsSource, fsSource);
 if (!programInfo) {
     throw new Error('Failed to initialize shader program');
 }
+
+let buildingIndex = 0
+
+function loadBuildingMetadata(index: number) {
+    // Set the building data to the UI
+    document.getElementById('building-name')!.textContent = building.name
+    document.getElementById('building-type')!.textContent = building.type
+    document.getElementById('building-levels')!.textContent = building.levels.toString()
+    document.getElementById('building-street')!.textContent = building.street
+}
 const renderer = new cbve.Renderer(gl, programInfo);
-const feature = data.features[1];
-const building = new cbve.Building(feature);
-const buildingMesh = new cbve.Mesh(gl, building.geometry);
+let feature = data.features[buildingIndex];
+console.log(feature);
+let building = new cbve.Building(feature);
+let buildingMesh = new cbve.Mesh(gl, building.geometry);
 
-// Set the building data to the UI
-document.getElementById('building-name')!.textContent = building.name
-document.getElementById('building-type')!.textContent = building.type
-document.getElementById('building-levels')!.textContent = building.levels
-document.getElementById('building-street')!.textContent = building.street
+loadBuildingMetadata(buildingIndex);
 
+// Add arrow keys to increment or decrement building index
+addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowRight') {
+        buildingIndex = (buildingIndex + 1) % data.features.length;
+        feature = data.features[buildingIndex];
+        building = new cbve.Building(feature);
+        buildingMesh = new cbve.Mesh(gl, building.geometry);
+        loadBuildingMetadata(buildingIndex);
+
+    }
+    if (event.key === 'ArrowLeft') {
+        buildingIndex = (buildingIndex - 1 + data.features.length) % data.features.length;
+        feature = data.features[buildingIndex];
+        building = new cbve.Building(feature);
+        buildingMesh = new cbve.Mesh(gl, building.geometry);
+        loadBuildingMetadata(buildingIndex);
+    }
+});
 
 //  Global Cube State
 let meshRotation = 0.0;

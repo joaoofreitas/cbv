@@ -23,6 +23,7 @@ export class Building {
         this.levels = parseInt(feature.properties["building:levels"]) || 1;
         this.street = feature.properties["addr:street"] || "";
     }
+
     private createMesh(feature: any): Geometry {
         // 1. Normalize coordinates to always be an array of polygons
         const polygons = feature.geometry.type === "MultiPolygon"
