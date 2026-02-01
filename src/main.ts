@@ -32,15 +32,13 @@ if (!programInfo) {
     throw new Error('Failed to initialize shader program');
 }
 const renderer = new cbve.Renderer(gl, programInfo);
-const feature = data.features[0];
-const buildingMesh = cbve.BuildingFactory.createMesh(feature);
-const cubeMesh = new cbve.Mesh(gl, buildingMesh);
+const feature = data.features[1];
+const building = cbve.BuildingFactory.createMesh(feature);
+const buildingMesh = new cbve.Mesh(gl, building);
 
-const cube: Cube = new Cube();
-//const cubeMesh = new cbve.Mesh(gl, cube);
 
 //  Global Cube State
-let cubeRotation = 0.0;
+let meshRotation = 0.0;
 let lastTime = 0;
 
 // Render Loop
@@ -49,7 +47,7 @@ function render(now: number) {
     const deltaTime = (now - lastTime) * 0.001;
     lastTime = now;
 
-    cubeRotation += deltaTime;
+    meshRotation += deltaTime;
 
     // WebGL Configuration per frame
     gl!.clearColor(0.1, 0.1, 0.1, 1.0);
@@ -65,7 +63,7 @@ function render(now: number) {
     const z_far: number = 10000.0;
 
     // Definition of Matrix for Camera Position and angle
-    const eye = vec3.fromValues(100, 75, 100); // Camera position
+    const eye = vec3.fromValues(100, 100, 100); // Camera position
     const center = vec3.fromValues(0, 0, 0); // Where the camera is looking at
     const up = vec3.fromValues(0, 1, 0); // Up direction
 
@@ -76,10 +74,12 @@ function render(now: number) {
     const modelViewMatrix = mat4.create();
     // Set the camera view
     mat4.lookAt(modelViewMatrix, eye, center, up);
-    mat4.rotate(modelViewMatrix, modelViewMatrix, cubeRotation, [0, 1, 0]);   // Rotate Y
+    mat4.rotate(modelViewMatrix, modelViewMatrix, meshRotation, [0, 1, 0]);   // Rotate Y
 
+    // Move the cube to the center
+    mat4.translate(modelViewMatrix, modelViewMatrix, [-buildingMesh.center.x, 0, -buildingMesh.center.z]);
     // Draw 
-    renderer.draw(cubeMesh, projectionMatrix, modelViewMatrix);
+    renderer.draw(buildingMesh, projectionMatrix, modelViewMatrix);
     requestAnimationFrame(render);
 }
 

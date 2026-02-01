@@ -1,181 +1,86 @@
+import earcut from 'earcut';
 import { type Geometry } from "../cbve/types";
 
 export class BuildingFactory {
-    private static METERS_PER_LEVEL = 7;
-
-    //static createMesh(feature: any): Geometry {
-    //    const allRings = feature.geometry.coordinates; // This is now an array of rings
-    //    const levels = parseInt(feature.properties["building:levels"]) || 1;
-    //    const height = levels * this.METERS_PER_LEVEL
-
-    //    const anchorLon = allRings[0][0][0];
-    //    const anchorLat = allRings[0][0][1];
-
-    //    const positions: number[] = [];
-    //    const indices: number[] = [];
-    //    let vertexOffset = 0;
-
-    //    for (const ring of allRings) {
-    //        // Generate walls for EACH ring (outer and inner)
-    //        for (let i = 0; i < ring.length; i++) {
-    //            const pos = this.latLonToMeters(ring[i][1], ring[i][0], anchorLat, anchorLon);
-    //            positions.push(pos.x, 0, pos.y);      // Ground
-    //            positions.push(pos.x, height, pos.y); // Roof
-    //        }
-
-    //        // Generate wall indices for this specific ring
-    //        const ringVertexCount = ring.length;
-    //        for (let i = 0; i < ringVertexCount - 1; i++) {
-    //            const current = vertexOffset + i * 2;
-    //            const next = vertexOffset + (i + 1) * 2;
-
-    //            // Two triangles for the wall segment
-    //            indices.push(current, next, current + 1);
-    //            indices.push(current + 1, next, next + 1);
-    //        }
-
-    //        vertexOffset += ringVertexCount * 2;
-    //    }
-
-    //    return {
-    //        positions: new Float32Array(positions),
-    //        indices: new Uint16Array(indices)
-    //    };
-    //}
-
-    private static triangulate(points: { x: number, y: number }[]): number[] {
-        const indices: number[] = [];
-        // Copy point indices into a working array (remove the duplicate last point if OSM has it)
-        let pIdx = Array.from({ length: points.length - 1 }, (_, i) => i);
-
-        // Ensure clockwise/counter-clockwise winding
-        if (this.getArea(points, pIdx) < 0) pIdx.reverse();
-
-        let iterations = 0;
-        while (pIdx.length > 3 && iterations < 500) {
-            for (let i = 0; i < pIdx.length; i++) {
-                const prev = pIdx[(i + pIdx.length - 1) % pIdx.length];
-                const curr = pIdx[i];
-                const next = pIdx[(i + 1) % pIdx.length];
-
-                if (prev === undefined || curr === undefined || next === undefined) {
-                    console.warn("Undefined index in triangulation");
-                    continue;
-                }
-
-                if (this.isEar(prev!, curr, next, points, pIdx)) {
-                    indices.push(prev!, curr, next);
-                    pIdx.splice(i, 1);
-                    break;
-                }
-            }
-            iterations++;
-        }
-
-        if (pIdx.length !== 3) {
-            console.warn("Triangulation failed or too complex, remaining points:", pIdx.length);
-        }
-        indices.push(pIdx[0]!, pIdx[1]!, pIdx[2]!);
-        return indices;
-    }
+    private static METERS_PER_LEVEL = 3.5;
 
     static createMesh(feature: any): Geometry {
         const allRings = feature.geometry.coordinates;
         const levels = parseInt(feature.properties["building:levels"]) || 1;
         const height = levels * this.METERS_PER_LEVEL;
 
+        // Calculating the center of the building for positioning
+        let minX = Infinity, maxX = -Infinity;
+        let minZ = Infinity, maxZ = -Infinity;
+
         const anchorLon = allRings[0][0][0];
         const anchorLat = allRings[0][0][1];
 
         const positions: number[] = [];
         const indices: number[] = [];
-        let vertexOffset = 0;
 
-        // --- 1. WALLS GENERATION ---
+        // Earcut specific data structures
+        const flatCoords: number[] = []; // [x, z, x, z, ...]
+        const holeIndices: number[] = [];
+        let globalVertexCount = 0;
+
         for (let r = 0; r < allRings.length; r++) {
             const ring = allRings[r];
-            for (let i = 0; i < ring.length; i++) {
-                const pos = this.latLonToMeters(ring[i][1], ring[i][0], anchorLat, anchorLon);
-                positions.push(pos.x, 0, pos.y);      // Ground vertex (index vertexOffset + i*2)
-                positions.push(pos.x, height, pos.y); // Roof vertex   (index vertexOffset + i*2 + 1)
+
+            // Record where the hole starts in the flat array
+            if (r > 0) {
+                holeIndices.push(flatCoords.length / 2);
             }
 
+            for (let i = 0; i < ring.length; i++) {
+                const pos = this.latLonToMeters(ring[i][1], ring[i][0], anchorLat, anchorLon);
+                // Update the center calculation
+                minX = Math.min(minX, pos.x);
+                maxX = Math.max(maxX, pos.x);
+                minZ = Math.min(minZ, pos.y);
+                maxZ = Math.max(maxZ, pos.y);
+
+
+                // For Earcut (Roof Triangulation)
+                flatCoords.push(pos.x, pos.y);
+
+                // For Walls (Standard Vertices)
+                positions.push(pos.x, 0, pos.y);      // Ground
+                positions.push(pos.x, height, pos.y); // Roof
+            }
+
+            // Wall Indices (Only if it's not the duplicate closing point)
             const ringVertexCount = ring.length;
+            const ringOffset = globalVertexCount;
             for (let i = 0; i < ringVertexCount - 1; i++) {
-                const current = vertexOffset + i * 2;
-                const next = vertexOffset + (i + 1) * 2;
+                const current = ringOffset + i * 2;
+                const next = ringOffset + (i + 1) * 2;
                 indices.push(current, next, current + 1);
                 indices.push(current + 1, next, next + 1);
             }
+            globalVertexCount += ringVertexCount * 2;
+        }
 
-            // --- 2. ROOF GENERATION (For the Outer Ring) ---
-            // For now, let's just triangulate the outer ring (index 0)
-            if (r === 0) {
-                const roofPoints: { x: number, y: number }[] = [];
-                for (let i = 0; i < ring.length; i++) {
-                    const pos = this.latLonToMeters(ring[i][1], ring[i][0], anchorLat, anchorLon);
-                    roofPoints.push(pos);
-                }
+        const center = {
+            x: (minX + maxX) / 2,
+            y: height / 2, // Half the building height
+            z: (minZ + maxZ) / 2
+        };
 
-                const roofTriangles = this.triangulate(roofPoints);
-                for (const idx of roofTriangles) {
-                    // We multiply by 2 and add 1 because the roof vertex 
-                    // for each ring point is at (localIndex * 2 + 1)
-                    indices.push(vertexOffset + (idx * 2 + 1));
-                }
-            }
-
-            vertexOffset += ringVertexCount * 2;
+        // Eearcut for Roof Triangulation
+        const roofIndices = earcut(flatCoords, holeIndices);
+        // Map Earcut's indices back to our interleaved positions array
+        for (const idx of roofIndices) {
+            // idx refers to the coordinate pair in flatCoords.
+            // In our 'positions', that same point's Roof vertex is at idx * 2 + 1
+            indices.push(idx * 2 + 1);
         }
 
         return {
             positions: new Float32Array(positions),
-            indices: new Uint16Array(indices)
+            indices: new Uint16Array(indices),
+            center: center
         };
-    }
-
-    private static isEar(p1: number, p2: number, p3: number, points: { x: number, y: number }[], pIdx: number[]): boolean {
-        const a = points[p1], b = points[p2], c = points[p3];
-        if (a === undefined || b === undefined || c === undefined) return false;
-        // Must be convex
-        if ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x) <= 0) return false;
-
-        // Must not contain any other points
-        for (const idx of pIdx) {
-            if (idx === p1 || idx === p2 || idx === p3) continue;
-            if (this.pointInTriangle(points[idx], a, b, c)) return false;
-        }
-        return true;
-    }
-
-    private static pointInTriangle(p: any, a: any, b: any, c: any): boolean {
-        const det = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
-        const b1 = ((b.y - c.y) * (p.x - c.x) + (c.x - b.x) * (p.y - c.y)) / det;
-        const b2 = ((c.y - a.y) * (p.x - c.x) + (a.x - c.x) * (p.y - c.y)) / det;
-        const b3 = 1 - b1 - b2;
-        return b1 > 0 && b2 > 0 && b3 > 0;
-    }
-
-    private static getArea(points: any[], pIdx: number[]): number {
-        let area = 0;
-        for (let i = 0; i < pIdx.length; i++) {
-            const j = (i + 1) % pIdx.length;
-
-            if (pIdx[i] === undefined || pIdx[j] === undefined) {
-                return 0;
-            }
-            const currIdx: number = pIdx[i]!;
-            const nextIdx: number = pIdx[j]!;
-
-            const p1 = points[currIdx];
-            const p2 = points[nextIdx];
-
-            if (p1 && p2) {
-                area += p1.x * p2.y;
-                area -= p1.y * p2.x;
-            }
-        }
-        return area / 2;
     }
 
     private static latLonToMeters(lat: number, lon: number, anchorLat: number, anchorLon: number) {

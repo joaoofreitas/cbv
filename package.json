@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@types/gl-matrix": "^2.4.5",
+    "earcut": "^3.0.2",
     "gl-matrix": "^3.4.4"
   }
 }
