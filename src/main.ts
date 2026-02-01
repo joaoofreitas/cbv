@@ -1,9 +1,6 @@
 import { mat4, vec3 } from 'gl-matrix';
 import { cbve } from './cbve';
-import { Cube } from './models/models';
 import { data } from '../data/data';
-
-// Assuming your shaders are exported as strings from this file
 import { vsSource, fsSource } from './shaders/shaders';
 
 // Setup Canvas and WebGL Context
@@ -25,6 +22,25 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
+// Input Tracker
+const keys: Record<string, boolean> = {};
+
+window.addEventListener('keydown', (e) => keys[e.key.toLowerCase()] = true);
+window.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
+
+// For the mouse, let's add "Orbit" controls (click and drag to rotate)
+let isDragging = false;
+let rotation = { x: 0, y: 0 };
+
+canvas.addEventListener('mousedown', () => isDragging = true);
+window.addEventListener('mouseup', () => isDragging = false);
+window.addEventListener('mousemove', (e) => {
+    if (isDragging) {
+        rotation.x -= e.movementX * 0.005; // Horizontal rotation
+        rotation.y -= e.movementY * 0.005; // Vertical rotation
+    }
+});
+
 // Initialize Engine Components (Shaders, Renderer, Mesh)
 // We compile shaders once at the start
 const programInfo = cbve.Shaders.createProgram(gl, vsSource, fsSource);
@@ -32,85 +48,66 @@ if (!programInfo) {
     throw new Error('Failed to initialize shader program');
 }
 
-let buildingIndex = 0
-
-function loadBuildingMetadata(index: number) {
-    // Set the building data to the UI
-    document.getElementById('building-name')!.textContent = building.name
-    document.getElementById('building-type')!.textContent = building.type
-    document.getElementById('building-levels')!.textContent = building.levels.toString()
-    document.getElementById('building-street')!.textContent = building.street
-}
 const renderer = new cbve.Renderer(gl, programInfo);
-let feature = data.features[buildingIndex];
-console.log(feature);
-let building = new cbve.Building(feature);
-let buildingMesh = new cbve.Mesh(gl, building.geometry);
+const map: Record<string, Building> = cbve.MapBuilder.build(data.features);
+const meshes = Object.values(map).map(building => new cbve.Mesh(gl, building.geometry));
 
-loadBuildingMetadata(buildingIndex);
+const eye = vec3.fromValues(300, 300, 300); // Backed up to see the "map"
+const target = vec3.fromValues(0, 0, 0);
+const up = vec3.fromValues(0, 1, 0);
 
-// Add arrow keys to increment or decrement building index
-addEventListener('keydown', (event) => {
-    if (event.key === 'ArrowRight') {
-        buildingIndex = (buildingIndex + 1) % data.features.length;
-        feature = data.features[buildingIndex];
-        building = new cbve.Building(feature);
-        buildingMesh = new cbve.Mesh(gl, building.geometry);
-        loadBuildingMetadata(buildingIndex);
+let distance = 500; // Distance from camera to target
+function updateCamera() {
+    const moveSpeed = 5.0;
 
-    }
-    if (event.key === 'ArrowLeft') {
-        buildingIndex = (buildingIndex - 1 + data.features.length) % data.features.length;
-        feature = data.features[buildingIndex];
-        building = new cbve.Building(feature);
-        buildingMesh = new cbve.Mesh(gl, building.geometry);
-        loadBuildingMetadata(buildingIndex);
-    }
-});
+    // 1. Calculate direction vectors from target to eye
+    // This allows movement relative to the current view
+    if (keys['w']) distance -= moveSpeed;
+    if (keys['s']) distance += moveSpeed;
 
-//  Global Cube State
-let meshRotation = 0.0;
-let lastTime = 0;
+    // Simple panning of the target
+    if (keys['a']) target[0] -= moveSpeed;
+    if (keys['d']) target[0] += moveSpeed;
 
-// Render Loop
-function render(now: number) {
-    // Calculate deltaTime so rotation speed is consistent regardless of FPS
-    const deltaTime = (now - lastTime) * 0.001;
-    lastTime = now;
+    // Clamp zoom distance
+    distance = Math.max(10, Math.min(distance, 5000));
 
-    meshRotation += deltaTime;
+    // 2. Update eye position based on rotation and distance
+    // This creates a "Spherical" orbit camera
+    eye[0] = target[0] + distance * Math.sin(rotation.x) * Math.cos(rotation.y);
+    eye[1] = target[1] + distance * Math.sin(rotation.y);
+    eye[2] = target[2] + distance * Math.cos(rotation.x) * Math.cos(rotation.y);
+}
 
-    // WebGL Configuration per frame
-    gl!.clearColor(0.1, 0.1, 0.1, 1.0);
-    gl!.clearDepth(1.0);
-    gl!.enable(gl!.DEPTH_TEST);
-    gl!.depthFunc(gl!.LEQUAL);
+
+
+function render() {
+    updateCamera();
     gl!.clear(gl!.COLOR_BUFFER_BIT | gl!.DEPTH_BUFFER_BIT);
 
-    // Camera Setup
-    const aspect: number = canvas.width / canvas.height;
-    const fov: number = 45 * Math.PI / 180; // in radians
-    const z_near: number = 0.1;
-    const z_far: number = 10000.0;
+    const aspect = canvas.width / canvas.height;
+    const projectionMatrix = mat4.create();
+    mat4.perspective(projectionMatrix, 45 * Math.PI / 180, aspect, 0.1, 10000.0);
 
-    // Definition of Matrix for Camera Position and angle
-    const eye = vec3.fromValues(100, 100, 100); // Camera position
-    const center = vec3.fromValues(0, 0, 0); // Where the camera is looking at
-    const up = vec3.fromValues(0, 1, 0); // Up direction
+    const viewMatrix = mat4.create();
+    mat4.lookAt(viewMatrix, eye, target, up);
 
-    // Setup Matrices
-    const projectionMatrix: mat4 = mat4.create();
-    mat4.perspective(projectionMatrix, fov, aspect, z_near, z_far);
 
-    const modelViewMatrix = mat4.create();
-    // Set the camera view
-    mat4.lookAt(modelViewMatrix, eye, center, up);
-    mat4.rotate(modelViewMatrix, modelViewMatrix, meshRotation, [0, 1, 0]);   // Rotate Y
 
-    // Move the cube to the center
-    mat4.translate(modelViewMatrix, modelViewMatrix, [-buildingMesh.center.x, 0, -buildingMesh.center.z]);
-    // Draw 
-    renderer.draw(buildingMesh, projectionMatrix, modelViewMatrix);
+    Object.values(map).forEach((building, index) => {
+        const mesh = meshes[index];
+        if (!mesh) return;
+
+        const modelViewMatrix = mat4.create();
+        mat4.translate(modelViewMatrix, viewMatrix, [
+            building.geometry.center.x,
+            0,
+            building.geometry.center.z
+        ]);
+
+        renderer.draw(mesh, projectionMatrix, modelViewMatrix);
+    });
+
     requestAnimationFrame(render);
 }
 

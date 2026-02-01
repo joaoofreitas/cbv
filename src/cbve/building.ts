@@ -1,22 +1,38 @@
 import earcut from 'earcut';
-import { type Geometry } from "../cbve/types";
+import type { Coordinates, CoordinatesMeters, Geometry } from "../cbve/types";
 
+
+// This class represents a Building with its metadata and 3D geometry
 export class Building {
+    // Sets the average height per building level in meters
     private static METERS_PER_LEVEL = 3.5;
 
+    // Name of the Building
     public name: string = "Unnamed Building";
+    // Type of the Building (e.g., residential, commercial)
     public type: string = "Building";
+    // Number of floors/levels
     public levels: number = 1;
+    // Street address (if available)
     public street: string = "";
+    // Geometry data for rendering
     public geometry: Geometry;
+    // Anchor point for coordinate conversion
+    private anchor: Coordinates;
 
-
-    constructor(feature: any) {
+    // Constructor takes a GeoJSON feature and an anchor point
+    // 
+    // @param feature: any- GeoJSON feature representing the building
+    // @param anchor: Coordinates - Anchor point for coordinate conversion
+    constructor(feature: any, anchor: Coordinates) {
         this.parseMetadata(feature);
-        this.geometry = this.createMesh(feature);
+        this.anchor = anchor;
+        this.geometry = this.createMesh(feature)
     }
 
     // Parse GeoJSON feature to create building mesh form OSM Data
+    //
+    // @param feature: any - GeoJSON feature representing the building
     private parseMetadata(feature: any): void {
         this.name = feature.properties["name"] || "Unnamed Building";
         this.type = feature.properties["building"] || "Building";
@@ -24,6 +40,9 @@ export class Building {
         this.street = feature.properties["addr:street"] || "";
     }
 
+    // Create 3D mesh geometry from GeoJSON feature
+    // 
+    // @param feature: any - GeoJSON feature representing the building
     private createMesh(feature: any): Geometry {
         // 1. Normalize coordinates to always be an array of polygons
         const polygons = feature.geometry.type === "MultiPolygon"
@@ -35,10 +54,6 @@ export class Building {
 
         let minX = Infinity, maxX = -Infinity;
         let minZ = Infinity, maxZ = -Infinity;
-
-        // Use the first point of the first polygon as the anchor
-        const anchorLon = polygons[0][0][0][0];
-        const anchorLat = polygons[0][0][0][1];
 
         const positions: number[] = [];
         const indices: number[] = [];
@@ -61,7 +76,9 @@ export class Building {
                 }
 
                 for (let i = 0; i < ring.length; i++) {
-                    const pos = this.latLonToMeters(ring[i][1], ring[i][0], anchorLat, anchorLon);
+                    //const pos = this.coordinatesToMeters(ring[i][1], ring[i][0], this.anchor.lat, this.anchor.lon);
+                    let coor: Coordinates = { lat: ring[i][1], lon: ring[i][0] };
+                    const pos = this.coordinatesToMeters(coor, this.anchor);
 
                     minX = Math.min(minX, pos.x);
                     maxX = Math.max(maxX, pos.x);
@@ -88,7 +105,6 @@ export class Building {
                 globalVertexOffset += ringVertexCount * 2;
             }
 
-            // --- Roof Triangulation for THIS Polygon Part ---
             const roofIndices = earcut(flatCoords, holeIndices);
 
             // We need to find where this specific polygon started in the global positions array
@@ -113,11 +129,18 @@ export class Building {
             center: center
         };
     }
-
-    private latLonToMeters(lat: number, lon: number, anchorLat: number, anchorLon: number) {
+    // TODO: Convert this to a Helper Static Class (Shared with mapbuilder)
+    // Convert geographic coordinates to meters relative to an anchor point
+    //
+    // @param coor: Coordinates - Geographic coordinates to convert
+    // @param anchor: Coordinates - Anchor point for conversion
+    //
+    // @returns CoordinatesMeters - Converted coordinates in meters
+    private coordinatesToMeters(coor: Coordinates, anchor: Coordinates): CoordinatesMeters {
         const R = 6378137;
-        const x = (lon - anchorLon) * (Math.PI / 180) * R * Math.cos(anchorLat * Math.PI / 180);
-        const y = (lat - anchorLat) * (Math.PI / 180) * R;
-        return { x, y };
+        return {
+            x: (coor.lon - anchor.lon) * (Math.PI / 180) * R * Math.cos(anchor.lat * Math.PI / 180),
+            y: (coor.lat - anchor.lat) * (Math.PI / 180) * R
+        }
     }
 }
