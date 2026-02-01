@@ -3,45 +3,45 @@ import { type Geometry } from "../cbve/types";
 export class BuildingFactory {
     private static METERS_PER_LEVEL = 7;
 
-    static createMesh(feature: any): Geometry {
-        const allRings = feature.geometry.coordinates; // This is now an array of rings
-        const levels = parseInt(feature.properties["building:levels"]) || 1;
-        const height = levels * this.METERS_PER_LEVEL
+    //static createMesh(feature: any): Geometry {
+    //    const allRings = feature.geometry.coordinates; // This is now an array of rings
+    //    const levels = parseInt(feature.properties["building:levels"]) || 1;
+    //    const height = levels * this.METERS_PER_LEVEL
 
-        const anchorLon = allRings[0][0][0];
-        const anchorLat = allRings[0][0][1];
+    //    const anchorLon = allRings[0][0][0];
+    //    const anchorLat = allRings[0][0][1];
 
-        const positions: number[] = [];
-        const indices: number[] = [];
-        let vertexOffset = 0;
+    //    const positions: number[] = [];
+    //    const indices: number[] = [];
+    //    let vertexOffset = 0;
 
-        for (const ring of allRings) {
-            // Generate walls for EACH ring (outer and inner)
-            for (let i = 0; i < ring.length; i++) {
-                const pos = this.latLonToMeters(ring[i][1], ring[i][0], anchorLat, anchorLon);
-                positions.push(pos.x, 0, pos.y);      // Ground
-                positions.push(pos.x, height, pos.y); // Roof
-            }
+    //    for (const ring of allRings) {
+    //        // Generate walls for EACH ring (outer and inner)
+    //        for (let i = 0; i < ring.length; i++) {
+    //            const pos = this.latLonToMeters(ring[i][1], ring[i][0], anchorLat, anchorLon);
+    //            positions.push(pos.x, 0, pos.y);      // Ground
+    //            positions.push(pos.x, height, pos.y); // Roof
+    //        }
 
-            // Generate wall indices for this specific ring
-            const ringVertexCount = ring.length;
-            for (let i = 0; i < ringVertexCount - 1; i++) {
-                const current = vertexOffset + i * 2;
-                const next = vertexOffset + (i + 1) * 2;
+    //        // Generate wall indices for this specific ring
+    //        const ringVertexCount = ring.length;
+    //        for (let i = 0; i < ringVertexCount - 1; i++) {
+    //            const current = vertexOffset + i * 2;
+    //            const next = vertexOffset + (i + 1) * 2;
 
-                // Two triangles for the wall segment
-                indices.push(current, next, current + 1);
-                indices.push(current + 1, next, next + 1);
-            }
+    //            // Two triangles for the wall segment
+    //            indices.push(current, next, current + 1);
+    //            indices.push(current + 1, next, next + 1);
+    //        }
 
-            vertexOffset += ringVertexCount * 2;
-        }
+    //        vertexOffset += ringVertexCount * 2;
+    //    }
 
-        return {
-            positions: new Float32Array(positions),
-            indices: new Uint16Array(indices)
-        };
-    }
+    //    return {
+    //        positions: new Float32Array(positions),
+    //        indices: new Uint16Array(indices)
+    //    };
+    //}
 
     private static triangulate(points: { x: number, y: number }[]): number[] {
         const indices: number[] = [];
@@ -77,6 +77,61 @@ export class BuildingFactory {
         }
         indices.push(pIdx[0]!, pIdx[1]!, pIdx[2]!);
         return indices;
+    }
+
+    static createMesh(feature: any): Geometry {
+        const allRings = feature.geometry.coordinates;
+        const levels = parseInt(feature.properties["building:levels"]) || 1;
+        const height = levels * this.METERS_PER_LEVEL;
+
+        const anchorLon = allRings[0][0][0];
+        const anchorLat = allRings[0][0][1];
+
+        const positions: number[] = [];
+        const indices: number[] = [];
+        let vertexOffset = 0;
+
+        // --- 1. WALLS GENERATION ---
+        for (let r = 0; r < allRings.length; r++) {
+            const ring = allRings[r];
+            for (let i = 0; i < ring.length; i++) {
+                const pos = this.latLonToMeters(ring[i][1], ring[i][0], anchorLat, anchorLon);
+                positions.push(pos.x, 0, pos.y);      // Ground vertex (index vertexOffset + i*2)
+                positions.push(pos.x, height, pos.y); // Roof vertex   (index vertexOffset + i*2 + 1)
+            }
+
+            const ringVertexCount = ring.length;
+            for (let i = 0; i < ringVertexCount - 1; i++) {
+                const current = vertexOffset + i * 2;
+                const next = vertexOffset + (i + 1) * 2;
+                indices.push(current, next, current + 1);
+                indices.push(current + 1, next, next + 1);
+            }
+
+            // --- 2. ROOF GENERATION (For the Outer Ring) ---
+            // For now, let's just triangulate the outer ring (index 0)
+            if (r === 0) {
+                const roofPoints: { x: number, y: number }[] = [];
+                for (let i = 0; i < ring.length; i++) {
+                    const pos = this.latLonToMeters(ring[i][1], ring[i][0], anchorLat, anchorLon);
+                    roofPoints.push(pos);
+                }
+
+                const roofTriangles = this.triangulate(roofPoints);
+                for (const idx of roofTriangles) {
+                    // We multiply by 2 and add 1 because the roof vertex 
+                    // for each ring point is at (localIndex * 2 + 1)
+                    indices.push(vertexOffset + (idx * 2 + 1));
+                }
+            }
+
+            vertexOffset += ringVertexCount * 2;
+        }
+
+        return {
+            positions: new Float32Array(positions),
+            indices: new Uint16Array(indices)
+        };
     }
 
     private static isEar(p1: number, p2: number, p3: number, points: { x: number, y: number }[], pIdx: number[]): boolean {
@@ -130,5 +185,3 @@ export class BuildingFactory {
         return { x, y };
     }
 }
-
-
