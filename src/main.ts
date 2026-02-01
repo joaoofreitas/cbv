@@ -57,29 +57,33 @@ const target = vec3.fromValues(0, 0, 0);
 const up = vec3.fromValues(0, 1, 0);
 
 let distance = 500; // Distance from camera to target
+let targetVelocity = vec3.create();
+const friction = 0.9;
 function updateCamera() {
-    const moveSpeed = 5.0;
+    const moveSpeed = 1.1;
 
-    // 1. Calculate direction vectors from target to eye
-    // This allows movement relative to the current view
-    if (keys['w']) distance -= moveSpeed;
-    if (keys['s']) distance += moveSpeed;
+    // Calculate direction vectors from target to eye
+    if (keys['w']) targetVelocity[2] -= moveSpeed;
+    if (keys['s']) targetVelocity[2] += moveSpeed;
+
+    targetVelocity[0] *= friction;
+    targetVelocity[2] *= friction;
+
+    target[0] += targetVelocity[0];
+    target[2] += targetVelocity[2];
 
     // Simple panning of the target
-    if (keys['a']) target[0] -= moveSpeed;
-    if (keys['d']) target[0] += moveSpeed;
+    if (keys['a']) targetVelocity[0] -= moveSpeed;
+    if (keys['d']) targetVelocity[0] += moveSpeed;
 
     // Clamp zoom distance
     distance = Math.max(10, Math.min(distance, 5000));
 
-    // 2. Update eye position based on rotation and distance
-    // This creates a "Spherical" orbit camera
+    // Update eye position based on rotation and distance
     eye[0] = target[0] + distance * Math.sin(rotation.x) * Math.cos(rotation.y);
     eye[1] = target[1] + distance * Math.sin(rotation.y);
     eye[2] = target[2] + distance * Math.cos(rotation.x) * Math.cos(rotation.y);
 }
-
-
 
 function render() {
     updateCamera();
@@ -91,8 +95,6 @@ function render() {
 
     const viewMatrix = mat4.create();
     mat4.lookAt(viewMatrix, eye, target, up);
-
-
 
     Object.values(map).forEach((building, index) => {
         const mesh = meshes[index];
