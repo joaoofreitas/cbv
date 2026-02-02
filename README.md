@@ -1,7 +1,9 @@
 # cbv
 A WebGL city buildings visualizer based on OSM data
 
+> Warning: This is an experimental and recreative project and may contain bugs or incomplete features.
 
+![Initial Version](./docs/images/buildings.png)
 
 ## References
 
