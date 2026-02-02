@@ -1,30 +1,40 @@
 // Vertex Shader
-// This shader transforms vertex positions and assigns colors based on depth
-// Runs on each vertex
 export const vsSource = `
     attribute vec3 aVertexPosition;
 
     uniform mat4 uModelViewMatrix;
     uniform mat4 uProjectionMatrix;
 
-    varying lowp vec4 vColor;
+    varying vec3 vPosition;
 
     void main(void) {
-        gl_Position = uProjectionMatrix * uModelViewMatrix * vec4(aVertexPosition, 1.0);
-        
-        // Basic "Depth" coloring: closer parts are brighter
-        float colorVal = (gl_Position.z / gl_Position.w) * 0.5 + 0.5;
-        vColor = vec4(0.0, colorVal, 1.0, 1.0); 
+        vec4 pos = uModelViewMatrix * vec4(aVertexPosition, 1.0);
+        vPosition = pos.xyz;
+        gl_Position = uProjectionMatrix * pos;
     }
 `;
 
 // Fragment Shader
-// Sets the fragment color based on interpolated vertex color
-// Runs on each pixel of the rendered shape
 export const fsSource = `
-    varying lowp vec4 vColor;
+    #extension GL_OES_standard_derivatives : enable
+    precision lowp float;
+
+    varying vec3 vPosition;
 
     void main(void) {
-        gl_FragColor = vColor;
+        // Calculate the normal of the face automatically
+        vec3 fdx = dFdx(vPosition);
+        vec3 fdy = dFdy(vPosition);
+        vec3 normal = normalize(cross(fdx, fdy));
+
+        // Define a "Sun" direction (coming from top-right)
+        vec3 lightDir = normalize(vec3(0.5, 1.0, 0.3));
+        
+        // Calculate how much light hits this face (0.0 to 1.0)
+        float dotProduct = dot(normal, lightDir);
+        float brightness = max(dotProduct, 0.3); // 0.3 is ambient light so it's not pitch black
+
+        vec3 baseColor = vec3(0.9, 0.9, 0.95);
+        gl_FragColor = vec4(baseColor * brightness, 1.0);
     }
 `;

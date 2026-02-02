@@ -22,5 +22,18 @@ export interface ProgramInfo {
 export interface Geometry {
     positions: Float32Array;
     indices: Uint16Array;
+    center: { x: number; y: number; z: number };
     // We can add colors or normals here later
+}
+
+// Latitude and Longitude coordinates in decimal degrees
+export interface Coordinates {
+    lat: number;
+    lon: number;
+}
+
+// Latitude and Longitude coordinates in meters relative to an anchor point
+export interface CoordinatesMeters {
+    x: number;
+    y: number;
 }

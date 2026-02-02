@@ -10,6 +10,8 @@ export class Mesh {
     count: number;
     // Geometry data interface
     data: Geometry;
+    // Center of the mesh
+    center: { x: number; y: number; z: number } = { x: 0, y: 0, z: 0 };
 
     // Constructor to create and initialize the Mesh
     // 
@@ -19,6 +21,7 @@ export class Mesh {
     constructor(gl: WebGLRenderingContext, data: Geometry) {
         this.data = data;
         this.count = data.indices.length;
+        this.center = data.center;
 
         // Ask GPU for a chunk of memory
         this.positionBuffer = gl.createBuffer()!;
