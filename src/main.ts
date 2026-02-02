@@ -1,6 +1,7 @@
-import { mat4, vec3 } from 'gl-matrix';
+import { mat4 } from 'gl-matrix';
 import { cbve } from './cbve';
 import { data } from '../data/data';
+
 import { vsSource, fsSource } from './shaders/shaders';
 import { CameraController } from './camera';
 
@@ -27,7 +28,7 @@ resize();
 // We compile shaders once at the start
 const programInfo = cbve.Shaders.createProgram(gl, vsSource, fsSource);
 if (!programInfo) {
-    throw new Error('Failed to initialize shader program');
+    console.warn("Could not initialize shaders");
 }
 
 const renderer = new cbve.Renderer(gl, programInfo);
