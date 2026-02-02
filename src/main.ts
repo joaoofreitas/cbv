@@ -23,23 +23,42 @@ window.addEventListener('resize', resize);
 resize();
 
 // Input Tracker
-const keys: Record<string, boolean> = {};
-
-window.addEventListener('keydown', (e) => keys[e.key.toLowerCase()] = true);
-window.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
-
 // For the mouse, let's add "Orbit" controls (click and drag to rotate)
-let isDragging = false;
 let rotation = { x: 0, y: 0 };
+let isLeftDragging = false;
+let isRightDragging = false;
 
-canvas.addEventListener('mousedown', () => isDragging = true);
-window.addEventListener('mouseup', () => isDragging = false);
+// Disable right-click menu so we can use it for rotation
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('mousedown', (e) => {
+    if (e.button === 0) isLeftDragging = true; // Left click
+    if (e.button === 2) isRightDragging = true; // Right click
+});
+window.addEventListener('mouseup', () => {
+    isLeftDragging = false;
+    isRightDragging = false;
+});
 window.addEventListener('mousemove', (e) => {
-    if (isDragging) {
-        rotation.x -= e.movementX * 0.005; // Horizontal rotation
-        rotation.y -= e.movementY * 0.005; // Vertical rotation
+    if (isRightDragging) {
+        rotation.x -= e.movementX * 0.005;
+        rotation.y = Math.max(-1.5, Math.min(Math.PI / 1.5, rotation.y - e.movementY * 0.005));
+    }
+    else if (isLeftDragging) {
+        // Panning (Moving the target)
+        // We move the target relative to where the camera is facing
+        const forwardX = Math.sin(currentRotation.x);
+        const forwardZ = Math.cos(currentRotation.x);
+        const panSpeed = currentDistance * 0.001; // Pan faster when zoomed out
+
+        target[0] -= (forwardZ * e.movementX - forwardX * e.movementY) * panSpeed;
+        target[2] -= (forwardX * e.movementX + forwardZ * e.movementY) * panSpeed;
     }
 });
+
+window.addEventListener('wheel', (e) => {
+    // Zooming
+    distance = Math.max(50, Math.min(5000, distance + e.deltaY));
+}, { passive: false });
 
 // Initialize Engine Components (Shaders, Renderer, Mesh)
 // We compile shaders once at the start
@@ -49,40 +68,38 @@ if (!programInfo) {
 }
 
 const renderer = new cbve.Renderer(gl, programInfo);
-const map: Record<string, Building> = cbve.MapBuilder.build(data.features);
+const map: Record<string, cbve.Building> = cbve.MapBuilder.build(data.features);
+
 const meshes = Object.values(map).map(building => new cbve.Mesh(gl, building.geometry));
 
 const eye = vec3.fromValues(300, 300, 300); // Backed up to see the "map"
 const target = vec3.fromValues(0, 0, 0);
 const up = vec3.fromValues(0, 1, 0);
 
-let distance = 500; // Distance from camera to target
-let targetVelocity = vec3.create();
-const friction = 0.9;
+let distance = 500;
+let currentRotation = { x: 0, y: 0 };
+let currentTarget = vec3.clone(target);
+let currentDistance = distance;
 function updateCamera() {
-    const moveSpeed = 1.1;
+    const lerp = 0.15; // Smoothness factor
 
-    // Calculate direction vectors from target to eye
-    if (keys['w']) targetVelocity[2] -= moveSpeed;
-    if (keys['s']) targetVelocity[2] += moveSpeed;
+    // Interpolate values
+    currentRotation.x += (rotation.x - currentRotation.x) * lerp;
+    currentRotation.y += (rotation.y - currentRotation.y) * lerp;
+    currentDistance += (distance - currentDistance) * lerp;
+    vec3.lerp(currentTarget, currentTarget, target, lerp);
 
-    targetVelocity[0] *= friction;
-    targetVelocity[2] *= friction;
+    // Cap camera always above ground level
+    let nextEyeY = currentTarget[1] + currentDistance * Math.sin(currentRotation.y);
+    const minHeight = 10;
+    if (nextEyeY < minHeight) {
+        nextEyeY = minHeight;
+    }
 
-    target[0] += targetVelocity[0];
-    target[2] += targetVelocity[2];
-
-    // Simple panning of the target
-    if (keys['a']) targetVelocity[0] -= moveSpeed;
-    if (keys['d']) targetVelocity[0] += moveSpeed;
-
-    // Clamp zoom distance
-    distance = Math.max(10, Math.min(distance, 5000));
-
-    // Update eye position based on rotation and distance
-    eye[0] = target[0] + distance * Math.sin(rotation.x) * Math.cos(rotation.y);
-    eye[1] = target[1] + distance * Math.sin(rotation.y);
-    eye[2] = target[2] + distance * Math.cos(rotation.x) * Math.cos(rotation.y);
+    // Update eye based on smoothed values
+    eye[0] = currentTarget[0] + currentDistance * Math.sin(currentRotation.x) * Math.cos(currentRotation.y);
+    eye[1] = currentTarget[1] + currentDistance * Math.sin(currentRotation.y);
+    eye[2] = currentTarget[2] + currentDistance * Math.cos(currentRotation.x) * Math.cos(currentRotation.y);
 }
 
 function render() {
